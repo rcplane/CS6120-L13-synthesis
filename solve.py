@@ -10,9 +10,9 @@ import z3
 # https://github.com/lark-parser/lark/wiki/Examples
 # augmented from https://github.com/lark-parser/lark/blob/master/lark/grammars/python.lark
 GRAMMAR = """
-start: stmts expr
+start: stmts expr         -> start
 
-stmts: stmt*
+stmts: stmt*              -> stmts
 
 stmt: CNAME ":=" expr ";" -> assign
   | "for" CNAME "=" NUMBER "to" NUMBER "do" stmts "done" ";" -> for
@@ -48,7 +48,6 @@ def interp(tree, lookup, assign):
     Pass a tree as a Lark `Tree` object for the parsed expression. For
     `lookup`, provide a function for mapping variable names to values.
     """
-
     op = tree.data
     if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr'):  # Binary operators.
         lhs = interp(tree.children[0], lookup, assign)
@@ -96,12 +95,15 @@ def interp(tree, lookup, assign):
         return interp(tree.children[1], lookup, assign)
 
 
-def pretty(tree, subst={}, paren=False):
+def pretty(tree, subst={}, paren=False, depth=0):
     """Pretty-print a tree, with optional substitutions applied.
 
     If `paren` is true, then loose-binding expressions are
     parenthesized. We simplify boolean expressions "on the fly."
     """
+
+    if not hasattr(tree, "data"):
+        return tree
 
     if paren:
         par = lambda s: '({})'.format(s)
@@ -135,7 +137,7 @@ def pretty(tree, subst={}, paren=False):
         true = pretty(tree.children[1], subst)
         false = pretty(tree.children[2], subst)
         return par('{} ? {} : {}'.format(cond, true, false))
-    elif op == 'stmt':
+    elif op == 'assign':
         name = tree.children[0]
         expr = pretty(tree.children[1], subst)
         return '{} := {};\n'.format(subst.get(name, name), expr)
@@ -151,15 +153,6 @@ def pretty(tree, subst={}, paren=False):
         stmts = pretty(tree.children[0], subst)
         expr = pretty(tree.children[1], subst)
         return '{}{}'.format(stmts, expr)
-
-
-#def run(tree, env):
-#    """Ordinary expression evaluation.
-#
-#    `env` is a mapping from variable names to values.
-#    """
-#
-#    return interp(tree, lambda n: env[n])
 
 
 def z3_expr(tree, vars=None):
@@ -191,7 +184,7 @@ def z3_expr(tree, vars=None):
             return v
 
     def set_var(name, value):
-        symbolic_vars[name] = value
+        symbolic_env[name] = value
 
     return interp(tree, get_var, set_var), symbolic_vars
 
@@ -278,9 +271,6 @@ def z3_expr(tree, vars=None):
 
 
 
-# add args assign, sequence
-
-
 def solve(phi):
     """Solve a Z3 expression, returning the model.
     """
@@ -309,21 +299,27 @@ def synthesize(tree1, tree2):
     """
 
     expr1, vars1 = z3_expr(tree1)
-    expr2, _ = z3_expr(tree2, vars1)
+    expr2, _ = z3_expr(tree2, vars1.copy())
 
     # Filter out the variables starting with "h" to get the non-hole
     # variables.
     plain_vars = {k: v for k, v in vars1.items()
                   if not k.startswith('h')}
+    
+    #print(f"Quantified vars: {plain_vars}")
 
-    # Formulate the constraint for Z3.
-    goal = z3.ForAll(
-        list(plain_vars.values()),  # For every valuation of variables...
-        expr1 == expr2,  # ...the two expressions produce equal results.
-    )
+    #print(f"constraint: {expr1 == expr2}")
+
+    goal = expr1 == expr2
+    quantified_vars = list(plain_vars.values())
+    if quantified_vars:
+        goal = z3.ForAll(
+            quantified_vars,  # For every valuation of variables...
+            goal,  # ...the two expressions produce equal results.
+        )
 
     # Solve the constraint.
-    print("solving goal {}".format(goal))
+    #print(f"solving goal {goal}")
     return solve(goal)
 
 
@@ -340,7 +336,7 @@ def desugar_hole(source):
 def simplify(tree, subst={}):
     op = tree.data
 
-    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr', 'neg', 'if'):
+    if op in ('add', 'sub', 'mul', 'div', 'shl', 'shr', 'neg', 'if', 'start', 'stmts'):
         for i in range(len(tree.children)):
             tree.children[i] = simplify(tree.children[i], subst)
 
@@ -354,24 +350,33 @@ def simplify(tree, subst={}):
                     return tree.children[1]
                 else:
                     return tree.children[2]
+    elif op == 'assign':
+        tree.children[1] = simplify(tree.children[1], subst)
+    elif op == 'for':
+        tree.children[3] = simplify(tree.children[3], subst)
 
     return tree
 
 
 def ex3(source):
-    src1, src2 = source.strip().split('\n')
+    src1, src2 = source.strip().split('----')
+    # print(f"Original src2: {src2}")
     src2 = desugar_hole(src2)  # Allow ?? in the sketch part.
+    # print(f"Desugared src2: {src2}")
 
     parser = lark.Lark(GRAMMAR)
     tree1 = parser.parse(src1)
+    # print(f"Sketch: {pretty(tree1)}")
     tree2 = parser.parse(src2)
+    # print(f"With holes: {pretty(tree2)}")
 
     model = synthesize(tree1, tree2)
-    print(pretty(tree1))
+
+    #print(f"Solution: {model}")
 
     values = model_values(model)
-    simplify(tree2, values)  # Remove foregone conclusions.
-    print(pretty(tree2, values))
+    simplified = simplify(tree2, values)  # Remove foregone conclusions.
+    print(f"\nSynthesized:\n{pretty(simplified, values)}")
 
 
 if __name__ == '__main__':

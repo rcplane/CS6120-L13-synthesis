@@ -1,0 +1,13 @@
+for i = 1 to 2 do
+  for j = 1 to 2 do
+    x := x * 2;
+  done; 
+done;
+x
+----
+for i = 1 to 2 do
+  for j = 1 to 2 do
+    x := x + ??;
+  done; 
+done;
+x

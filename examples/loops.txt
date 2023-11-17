@@ -1,0 +1,8 @@
+for i = 1 to 2 do
+  for j = 1 to 3 do
+    a := a * 2; 
+  done; 
+done;
+a
+----
+a * ??

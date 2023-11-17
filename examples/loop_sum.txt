@@ -1,0 +1,6 @@
+for i = 1 to 2 do
+  a := a + 1; 
+done;
+a
+----
+a + ??
