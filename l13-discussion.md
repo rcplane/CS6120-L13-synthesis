@@ -2,6 +2,8 @@
 
 # Summary
 
+[Link to repo](https://github.com/rcplane/CS6120-L13-synthesis).
+
 We extended the grammar of the language presented in class to include mutable
 assignments, (roughly) based off @bcarlet's task implementation with some
 modifications, and then `for` loops with a fixed lower and upper bound.
@@ -148,15 +150,18 @@ a * 64
 
 # Difficulties
 
--reimplementing assignment logic to use substitution
-
-- data field missing from returned lark tree was a common recurrence from pretty
-  printing and interp
-- an attempt to utilize interp logic for simiplify encountered typing
-  difficulties and was unneeded after sketch modifications
-- large loop counts andbroad holes in loop bodies led to invalid model errors in
-  z3 expression construction
-- overly vague sketch tree2inputcan also fail to solve
+- Ideally, we would be able to represent entire statements using holes that
+  could be filled in. However, it was not clear how to do this. We considered
+  using an axiomatized program logic, like one based of KAT, but this seemed
+  much too difficult for this task.
+- We struggled with how best to represent the synthesized program, striking a
+  balance between readibility and degree of simplification. For example, you can
+  display the entire unrolled program, but this would be very difficult to read.
+  In the end, we decided to maintain the structure of loops when displaying the
+  synthesized program to the user.
+- Large loop counts and broad holes in loop bodies led to invalid model errors
+  in z3 expression construction. Specifically, we very quickly overflowed the
+  bit vector when doing computations with nested loops.
 
 # Generative AI
 
@@ -164,7 +169,12 @@ a * 64
   especially for generating documentation. However, completions for printing
   functions and interpreter logic was lacking, often taking on javascript syntax
   instead of python perhaps getting confused by the context conditioning of semi
-  colons in the lark grammar early in the solve.py file.
+  colons in the lark grammar early in the solve.py file. It was mainly useful
+  for generating debugging statements, such as the following for printing the
+  sketch program:
+  ```
+  print(f"Sketch: {pretty(tree1)}")
+  ```
 
 - Chat GPT4 April 2023 was used in early brainstorming to transcribe Stein's
   algorithm for binary GCD calcuation as an expression loop body to compare
